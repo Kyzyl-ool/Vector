@@ -6,17 +6,29 @@ int main()
 {
 	
 	vector <int> a(2);
-	vector <int> b(4);
+	vector <int> b(11);
 	
-	printf("Before:\n");
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	a.append(1);
+	
+	a = b;
+	//~ printf("Before:\n");
 	a.dump("a", "stdout");
-	b.dump("b", "stdout");
+	//~ b.dump("b", "stdout");
 	
-	b = a;
+	//~ b = a;
 	
-	printf("After:\n");
-	a.dump("a", "stdout");
-	b.dump("b", "stdout");
+	//~ printf("After:\n");
+	//~ a.dump("a", "stdout");
+	//~ b.dump("b", "stdout");
 	//~ cout << a[1] << endl;
 	
 	return 0;

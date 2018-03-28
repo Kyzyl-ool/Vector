@@ -1,10 +1,11 @@
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 #include <cassert>
 #include <iostream>
 
 #define VECTOR_POISON -99999
-#define VECTOR_DEFAULT_SIZE 256
+#define VECTOR_DEFAULT_BLOCK_SIZE 10
+#define VECTOR_DEFAULT_BLOCK_AMOUNT 1
 
 using std::string;
 using std::cout;
@@ -22,19 +23,19 @@ template <typename data_T>
 class vector
 {
 private:
-	data_T* data;
-	uint len;
-
+	data_T* data; uint block_amount; uint count;
+	
+	void expand();
+	void shorten();
 public:
 	vector();
 	explicit vector(uint size);
-	vector(const vector& v);
+	explicit vector(const vector& v);
 	
 	~vector();
 	
-	
 	uint length();
-	vector_error_code append(data_T value);
+	void append(data_T value);
 	void swap(vector& that);
 	
 	data_T operator[](uint n);
@@ -60,40 +61,73 @@ string vector_convert_error_code_to_string(vector_error_code code)
 template <typename data_T>
 vector <data_T>::vector(uint size)
 {
-	data = (data_T* )malloc(size*sizeof(data_T));
-	for (uint i = 0; i < size; i++) data[i] = VECTOR_POISON;
-	len = size;
+	count = 0;
+	block_amount = size/VECTOR_DEFAULT_BLOCK_SIZE + 1;
+	data = (data_T* )malloc(block_amount*VECTOR_DEFAULT_BLOCK_SIZE*sizeof(data_T));
+	for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++) data[i] = VECTOR_POISON;
 }
 
 template <typename data_T>
 vector <data_T>::vector()
 {
-	data = (data_T* )malloc(VECTOR_DEFAULT_SIZE*sizeof(data_T));
-	for (uint i = 0; i < VECTOR_DEFAULT_SIZE; i++) data[i] = VECTOR_POISON;
-	len = VECTOR_DEFAULT_SIZE;
+	count = 0;
+	block_amount = VECTOR_DEFAULT_BLOCK_AMOUNT;
+	data = (data_T* )malloc(block_amount*VECTOR_DEFAULT_BLOCK_SIZE*sizeof(data_T));
+	for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++) data[i] = VECTOR_POISON;
 }
 
 template <typename data_T>
 vector <data_T>::vector(const vector <data_T>& v)
 {
-	len = v.len;
-	data = (data_T* )malloc(len*sizeof(data_T));
-	for (uint i = 0; i < len; i++) data[i] = v.data[i];
+	count = v.count;
+	block_amount = v.block_amount;
+	data = (data_T* )malloc(block_amount*VECTOR_DEFAULT_BLOCK_SIZE*sizeof(data_T));
+	for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++) data[i] = v.data[i];
 }
 
+template <typename data_T>
+void vector <data_T>::expand()
+{
+	block_amount++;
+	data_T* tmp = data;
+	data = (data_T* )malloc(block_amount*VECTOR_DEFAULT_BLOCK_SIZE*sizeof(data_T));
+	for (uint i = 0; i < (block_amount - 1)*VECTOR_DEFAULT_BLOCK_SIZE; i++)
+	{
+		data[i] = tmp[i];
+		tmp[i] = VECTOR_POISON;
+	}
+	for (uint i = (block_amount - 1)*VECTOR_DEFAULT_BLOCK_SIZE; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++)
+		data[i] = VECTOR_POISON;
+	free(tmp);
+}
 
+template <typename data_T>
+void vector <data_T>::shorten()
+{
+	block_amount--;
+	data_T* tmp = data;
+	data = (data_T* )malloc(block_amount*VECTOR_DEFAULT_BLOCK_SIZE, sizeof(data_T));
+	for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++)
+	{
+		data[i] = tmp[i];
+		tmp[i] = VECTOR_POISON;
+	}
+	free(tmp);
+}
 
 template <typename data_T>
 vector <data_T>::~vector()
 {
-	for (uint i = 0; i < len; i++) data[i] = VECTOR_POISON;
+	for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++) data[i] = VECTOR_POISON;
+	block_amount = 0;
+	count = 0;
 	free(data);
 }
 
 template <typename data_T>
 uint vector <data_T>::length()
 {
-	return len;
+	return block_amount*VECTOR_DEFAULT_BLOCK_SIZE;
 }
 
 template <typename data_T>
@@ -108,10 +142,14 @@ void vector <data_T>::dump(string name, string destination)
 	if (destination == "stdout")
 	{
 		cout << "Vector \"" << name << "\" dump [" << vector_convert_error_code_to_string(check()) << "].\n{\n";
-		cout << "	length = " << len << "\n";
+		cout << "	length = " << block_amount*VECTOR_DEFAULT_BLOCK_SIZE << "\n";
+		cout << "	count = " << count << endl;
 		cout << "	data:\n";
-		for (uint i = 0; i < len; i++)
-			cout << "		data[" << i << "] = " << data[i] << endl;
+		for (uint i = 0; i < block_amount*VECTOR_DEFAULT_BLOCK_SIZE; i++)
+			if (data[i] == VECTOR_POISON)
+				cout << "		data[" << i << "] = " << "POISON" << endl;
+			else
+				cout << "		data[" << i << "] = " << data[i] << endl;
 		cout << "}\n\n";
 		
 	}
@@ -122,9 +160,11 @@ void vector <data_T>::dump(string name, string destination)
 }
 
 template <typename data_T>
-vector_error_code vector <data_T>::append(data_T value)
+void vector <data_T>::append(data_T value)
 {
-	data[len++] = value;
+	if (count+1 >= block_amount*VECTOR_DEFAULT_BLOCK_SIZE)
+		expand();
+	data[count++] = value;
 }
 
 template <typename data_T>
@@ -136,16 +176,10 @@ data_T vector <data_T>::operator[](uint n)
 template <typename data_T>
 void vector <data_T>::swap(vector& that)
 {
-	std::swap(len, that.len);
+	std::swap(block_amount, that.block_amount);
+	std::swap(count, that.count);
 	std::swap(data, that.data);
 }
-
-//~ template <typename data_T>
-//~ template <typename data_U>
-//~ vector <data_T>& vector <data_T>::operator=(const vector <data_U>&& that)
-//~ {
-	//~ swap(that);
-//~ }
 
 template <typename data_T>
 vector <data_T>& vector <data_T>::operator=(const vector <data_T>& that)
